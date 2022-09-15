@@ -49,6 +49,7 @@ func TestCreate(t *testing.T) {
 	for _, f := range []string{
 		ChartfileName,
 		DeploymentName,
+		EnvSecretName,
 		HelpersName,
 		IgnorefileName,
 		NotesName,

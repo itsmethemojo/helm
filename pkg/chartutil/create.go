@@ -57,6 +57,8 @@ const (
 	IngressFileName = TemplatesDir + sep + "ingress.yaml"
 	// DeploymentName is the name of the example deployment file.
 	DeploymentName = TemplatesDir + sep + "deployment.yaml"
+	// EnvSecretName is the name of the example secret file for env vars.
+	EnvSecretName = TemplatesDir + sep + "secret-env.yaml"
 	// ServiceName is the name of the example service file.
 	ServiceName = TemplatesDir + sep + "service.yaml"
 	// ServiceAccountName is the name of the example serviceaccount file.
@@ -127,6 +129,10 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+
+env: {}
+  # Specify multiple environment parameters for the container
+  # EXAMPLE_KEY: example-value
 
 podAnnotations: {}
 
@@ -324,6 +330,19 @@ spec:
               port: http
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          env:
+          {{- with .Values.env }}
+            - name: ENV_CHECKSUM
+              value: {{ include "<CHARTNAME>.envChecksum" . }}
+            {{- range $key, $val := . }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "<CHARTNAME>.fullname" $ }}-env
+                  key: {{ $key }}
+                  optional: false
+            {{- end }}
+          {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -336,6 +355,19 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+`
+
+const defaultenvSecret = `{{- if .Values.env -}}
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: {{ include "<CHARTNAME>.fullname" . }}-env
+  labels:
+    {{- include "<CHARTNAME>.labels" . | nindent 4 }}
+stringData:
+  {{- toYaml .Values.env | nindent 2 }}
+{{- end }}
 `
 
 const defaultService = `apiVersion: v1
@@ -485,6 +517,19 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create a checksum for all env parameters in the secret.
+This ensures pod reloads on env secret changes.
+*/}}
+{{- define "<CHARTNAME>.envChecksum" -}}
+{{- $allKsAndVs := list }}
+{{- range $k, $v := . }}
+{{- $allKsAndVs = append $allKsAndVs $k }}
+{{- $allKsAndVs = append $allKsAndVs $v }}
+{{- end }}
+{{- join "," $allKsAndVs  | sha256sum | printf "%.*s" 60 }}
+{{- end }}
 `
 
 const defaultTestConnection = `apiVersion: v1
@@ -614,6 +659,11 @@ func Create(name, dir string) (string, error) {
 			// deployment.yaml
 			path:    filepath.Join(cdir, DeploymentName),
 			content: transform(defaultDeployment, name),
+		},
+		{
+			// env-secret.yaml
+			path:    filepath.Join(cdir, EnvSecretName),
+			content: transform(defaultenvSecret, name),
 		},
 		{
 			// service.yaml
