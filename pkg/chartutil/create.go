@@ -296,9 +296,9 @@ spec:
       {{- include "<CHARTNAME>.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- with include "<CHARTNAME>.podAnnotations" . }}
       annotations:
-        {{- toYaml . | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       labels:
         {{- include "<CHARTNAME>.selectorLabels" . | nindent 8 }}
@@ -330,10 +330,8 @@ spec:
               port: http
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          env:
           {{- with .Values.env }}
-            - name: ENV_CHECKSUM
-              value: {{ include "<CHARTNAME>.envChecksum" . }}
+          env:
             {{- range $key, $val := . }}
             - name: {{ $key }}
               valueFrom:
@@ -520,16 +518,21 @@ Create the name of the service account to use
 
 {{/*
 Create a checksum for all env parameters in the secret.
-This ensures pod reloads on env secret changes.
+Adds the checksum to podAnnotations to ensure pod reloads on env secret changes.
 */}}
-{{- define "<CHARTNAME>.envChecksum" -}}
-{{- $allKsAndVs := list }}
-{{- range $k, $v := . }}
-{{- $allKsAndVs = append $allKsAndVs $k }}
-{{- $allKsAndVs = append $allKsAndVs $v }}
-{{- end }}
-{{- join "," $allKsAndVs  | sha256sum | printf "%.*s" 60 }}
-{{- end }}
+{{- define "<CHARTNAME>.podAnnotations" -}}
+{{- if .Values.env -}}
+{{- $allKsAndVs := list -}}
+{{- range $k, $v := .Values.env -}}
+{{- $allKsAndVs = append $allKsAndVs $k -}}
+{{- $allKsAndVs = append $allKsAndVs $v -}}
+{{- end -}}
+{{- $envChecksum := join "," $allKsAndVs  | sha256sum | printf "%.*s" 60 -}}
+{{ toYaml (set .Values.podAnnotations "envChecksum" $envChecksum) }}
+{{- else -}}
+{{ toYaml .Values.podAnnotations }}
+{{- end -}}
+{{- end -}}
 `
 
 const defaultTestConnection = `apiVersion: v1
